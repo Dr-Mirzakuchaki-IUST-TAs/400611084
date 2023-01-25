@@ -47,7 +47,7 @@ architecture behavioral of i2c_master is
     signal data_rd_int  :   std_logic_vector (7 downto 0);
 
     -- bit counter
-    signal bit_cnt      :   integer range 0 to 7    :=  7;          -- counting bits if tansfering frame of data or address
+    signal bit_cnt      :   integer range 0 to 7    :=  7;          -- counting bits of tansfering data or address frame
 
     -- constants
     constant cnt_limit  :   integer :=  500;                        -- clk input freq: 50 Mhz, i2c freq: 100 Khz
@@ -134,8 +134,8 @@ begin
 
                         if (ena = '1') then
 
-                            busy        <=  '1';
-                            addr_rw_int <=  addr & rw;              -- sampling from inputs: address, rw & data_wr
+                            busy        <=  '1';                    -- transter starts, module gets busy
+                            addr_rw_int <=  addr & rw;              -- sampling from inputs: address, rw & data_wr to start transter
                             data_wr_int <=  data_wr;
                             state       <=  start;
 
@@ -149,20 +149,20 @@ begin
                     when start  =>
 
                         busy    <= '1';
-                        sda_int <=  addr_rw_int (bit_cnt);
+                        sda_int <=  addr_rw_int (bit_cnt);          -- sending msb bit of slave address
                         state   <=  address;
 
                     when address =>
 
-                        if (bit_cnt = 0) then
+                        if (bit_cnt = 0) then                       -- sending address frame ended
 
-                            sda_int <=  '1';
-                            bit_cnt <=  7;
+                            sda_int <=  '1';                        -- relese sda for slave to send ack bit for address
+                            bit_cnt <=  7;                          -- reset counter
                             state   <=  address_ack;
 
                         else
 
-                            bit_cnt <=  bit_cnt - 1;
+                            bit_cnt <=  bit_cnt - 1;                -- sendig remainig bits of address frame
                             sda_int <=  addr_rw_int (bit_cnt - 1);
                             state   <=  address;
 
@@ -170,14 +170,14 @@ begin
 
                     when address_ack    =>
 
-                        if (addr_rw_int (0) = '0') then
+                        if (addr_rw_int (0) = '0') then             -- write bit in rw
 
-                            sda_int <=  data_wr_int (bit_cnt);
+                            sda_int <=  data_wr_int (bit_cnt);      -- sending msb bit of data frame
                             state   <=  write;
 
                         else
 
-                            sda_int <=  '1';
+                            sda_int <=  '1';                        -- read bit in rw
                             state   <=  read;
 
                         end if;
@@ -186,15 +186,15 @@ begin
 
                         busy    <=  '1';
 
-                        if (bit_cnt = 0) then
+                        if (bit_cnt = 0) then                       -- sending date frame ended
 
-                            sda_int <=  '1';
+                            sda_int <=  '1';                        -- release sda for slave to send ack bit
                             bit_cnt <=  7;
                             state   <=  slv_ack;
 
                         else
 
-                            bit_cnt <=  bit_cnt - 1;
+                            bit_cnt <=  bit_cnt - 1;                -- send remaining bits of data frame
                             sda_int <=  data_wr_int (bit_cnt - 1);
                             state   <=  write;
                         
@@ -210,18 +210,18 @@ begin
 
                             if (addr_rw_int = addr & rw) then
 
-                                sda_int <=  data_wr_int (bit_cnt);
+                                sda_int <=  data_wr_int (bit_cnt);      -- send more data frames at current transfer
                                 state   <=  write;
 
                             else
 
-                                state   <=  start;
+                                state   <=  start;                      -- repeated start condition
 
                             end if;
 
                         else
 
-                            state   <=  stop;
+                            state   <=  stop;                           -- data transfer ended
 
                         end if;
 
@@ -262,24 +262,24 @@ begin
 
                             if (addr_rw_int = addr & rw) then
 
-                                sda_int <= '1';
+                                sda_int <= '1';                     -- more data frames to receive
                                 state   <=  read;
 
                             else
 
-                                state   <=  start;
+                                state   <=  start;                  -- repeated start condition
 
                             end if;
 
                         else
 
-                            state   <= stop;
+                            state   <= stop;                        -- data transfer ended
 
                         end if;
 
                     when stop   =>
 
-                        busy    <=  '0';
+                        busy    <=  '0';                            -- module is ready for new transfer
                         state   <= idle;
 
                 end case;
@@ -301,21 +301,21 @@ begin
 
                     when address_ack    =>
 
-                        if (sda /=  '0' or ack_err = '1') then          -- nack or prior ack error
+                        if (sda /=  '0' or ack_err = '1') then          
 
-                            ack_err <=  '1';
-
+                            ack_err <=  '1';                            -- receiving nack bit for address frame from slave or prior ack error
+                                                                        -- ack error conditions cound be handled by contorller logic with reset_n and ena pins
                         end if;
 
                     when read   =>
 
-                        data_rd_int (bit_cnt)   <=  sda;
+                        data_rd_int (bit_cnt)   <=  sda;                -- read receiving data
 
                     when slv_ack    =>
 
-                        if (sda /= '0' or ack_err = '1') then           -- nack or prior ack error
+                        if (sda /= '0' or ack_err = '1') then           
 
-                            ack_err <=  '1';
+                            ack_err <=  '1';                            -- receiving  nack bit for data frame from slave or prior ack error
 
                         end if;
 
